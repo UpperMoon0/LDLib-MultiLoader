@@ -3,6 +3,7 @@ package com.lowdragmc.lowdraglib.async;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.lowdragmc.lowdraglib.LDLib;
 import com.lowdragmc.lowdraglib.Platform;
+import com.lowdragmc.lowdraglib.syncdata.blockentity.IAsyncAutoSyncBlockEntity;
 import net.minecraft.MethodsReturnNonnullByDefault;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
@@ -44,6 +45,10 @@ public class AsyncThreadData extends SavedData {
 
     // ********************************* async thread ********************************* //
     private final CopyOnWriteArrayList<IAsyncLogic> asyncLogics = new CopyOnWriteArrayList<>();
+    // 1 restores upstream's 20 Hz scan; 2 (default) checks each tile at 10 Hz.
+    // Stagger by position so every tile does not scan on the same scheduler tick.
+    private static final int MACHINE_SCAN_INTERVAL = AsyncPollingSchedule.clampInterval(
+            Integer.getInteger("ldlib.asyncSyncPollInterval", 2));
     private ScheduledExecutorService executorService;
     private final static ThreadFactory THREAD_FACTORY = new ThreadFactoryBuilder()
             .setNameFormat("LDLib Async Thread-%d")
@@ -63,7 +68,7 @@ public class AsyncThreadData extends SavedData {
      * @param logic runnable
      */
     public void addAsyncLogic(IAsyncLogic logic) {
-        asyncLogics.add(logic);
+        asyncLogics.addIfAbsent(logic);
         createExecutorService();
     }
 
@@ -83,6 +88,10 @@ public class AsyncThreadData extends SavedData {
             if (Platform.isServerNotSafe()) return;
             IN_SERVICE.set(true);
             for (IAsyncLogic logic : asyncLogics) {
+                if (logic instanceof IAsyncAutoSyncBlockEntity blockEntity
+                        && !AsyncPollingSchedule.shouldPoll(periodID, blockEntity.getCurrentPos().asLong(), MACHINE_SCAN_INTERVAL)) {
+                    continue;
+                }
                 logic.asyncTick(periodID);
             }
         } catch (Throwable e) {
