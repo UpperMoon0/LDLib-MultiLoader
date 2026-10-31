@@ -39,6 +39,7 @@ public interface IAsyncAutoSyncBlockEntity extends IAutoSyncBlockEntity, IAsyncL
     }
 
     default void onInValid() {
+        SYNC_PACKETS.cancel(this);
         if (getSelf().getLevel() instanceof ServerLevel serverLevel) {
             AsyncThreadData.getOrCreate(serverLevel).removeAsyncLogic(this);
         }
