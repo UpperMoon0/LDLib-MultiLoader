@@ -82,6 +82,31 @@ class ManagedCollectionSnapshotTest {
     }
 
     @Test
+    void nullableElementsAreComparedWithoutCrashingOrFalseDirty() throws Exception {
+        var values = new NoLiveIteratorList<String>();
+        values.add(null);
+        var ref = createRef(values);
+
+        assertFalse(SyncUtils.isChanged(null, null));
+        assertTrue(SyncUtils.isChanged(null, "set"));
+        assertTrue(SyncUtils.isChanged("set", null));
+        assertDoesNotThrow(ref::update);
+        assertFalse(ref.isSyncDirty(), "unchanged null is not dirty");
+
+        values.set(0, "set");
+        assertDoesNotThrow(ref::update);
+        assertTrue(ref.isSyncDirty(), "null to value must be dirty");
+        ref.clearSyncDirty();
+
+        values.set(0, null);
+        assertDoesNotThrow(ref::update);
+        assertTrue(ref.isSyncDirty(), "value to null must be dirty");
+        ref.clearSyncDirty();
+        assertDoesNotThrow(ref::update);
+        assertFalse(ref.isSyncDirty(), "stable null remains clean");
+    }
+
+    @Test
     void detectsSizeChangeAndRecoverableConcurrentMutation() throws Exception {
         var values = new FlakySnapshotList<String>();
         values.add("one");
