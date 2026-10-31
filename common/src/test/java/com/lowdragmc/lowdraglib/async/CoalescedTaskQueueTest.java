@@ -65,6 +65,39 @@ class CoalescedTaskQueueTest {
     }
 
     @Test
+    void cancellationDropsUnloadedTaskWithoutCancellingReloadedTask() {
+        var queue = new CoalescedTaskQueue<Object>();
+        Object key = new Object();
+        Queue<Runnable> work = new ArrayDeque<>();
+        AtomicInteger sends = new AtomicInteger();
+
+        assertTrue(queue.submit(key, work::add, sends::incrementAndGet));
+        queue.cancel(key);
+        assertFalse(queue.isPending(key));
+        assertTrue(queue.submit(key, work::add, sends::incrementAndGet));
+        assertEquals(2, work.size());
+        // Simulate an old delayed network task executing after reload.
+        work.remove().run();
+        assertTrue(queue.isPending(key), "old task must not remove the new task token");
+        assertEquals(0, sends.get(), "cancelled packet must not be sent");
+        work.remove().run();
+        assertEquals(1, sends.get());
+        assertFalse(queue.isPending(key));
+    }
+
+    @Test
+    void cancellationIsIdempotentAndDoesNotBlockLaterSubmissions() {
+        var queue = new CoalescedTaskQueue<Object>();
+        Object key = new Object();
+        queue.cancel(key);
+        Queue<Runnable> work = new ArrayDeque<>();
+        assertTrue(queue.submit(key, work::add, () -> {}));
+        queue.cancel(key);
+        queue.cancel(key);
+        assertTrue(queue.submit(key, work::add, () -> {}));
+    }
+
+    @Test
     void concurrentProducersCannotScheduleDuplicates() throws Exception {
         var queue = new CoalescedTaskQueue<Object>();
         Object key = new Object();
