@@ -21,6 +21,7 @@ import net.minecraft.world.item.ItemStack;
 import javax.annotation.Nonnull;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
@@ -99,11 +100,19 @@ public class ModularUIContainer extends AbstractContainerMenu implements WidgetU
         modularUI.addTick();
     }
 
+    // A removed slot keeps its numeric index but loses its widget mapping.
+    // Never route stale client clicks or pick-all operations to that index.
+    static SlotWidget activeSlotWidget(Slot slot, Map<Slot, SlotWidget> slotMap) {
+        return slot instanceof EmptySlotPlaceholder ? null : slotMap.get(slot);
+    }
+
     @Override
     public void clicked(int slotId, int dragType, @Nonnull ClickType clickTypeIn, @Nonnull Player player) {
         if (slotId >= 0 && slotId < slots.size()) {
             Slot slot = getSlot(slotId);
-            ItemStack result = modularUI.getSlotMap().get(slot).slotClick(dragType, clickTypeIn, player);
+            SlotWidget widget = activeSlotWidget(slot, modularUI.getSlotMap());
+            if (widget == null) return;
+            ItemStack result = widget.slotClick(dragType, clickTypeIn, player);
             if (result == null) {
 //                return super.clicked(slotId, dragType, clickTypeIn, player);
                 super.clicked(slotId, dragType, clickTypeIn, player);
@@ -188,7 +197,10 @@ public class ModularUIContainer extends AbstractContainerMenu implements WidgetU
     @Nonnull
     @Override
     public ItemStack quickMoveStack(@Nonnull Player player, int index) {
+        if (index < 0 || index >= slots.size()) return ItemStack.EMPTY;
         Slot slot = slots.get(index);
+        SlotWidget widget = activeSlotWidget(slot, modularUI.getSlotMap());
+        if (widget == null) return ItemStack.EMPTY;
         if (!slot.mayPickup(player)) {
             return ItemStack.EMPTY;
         }
@@ -199,12 +211,12 @@ public class ModularUIContainer extends AbstractContainerMenu implements WidgetU
         ItemStack stackInSlot = slot.getItem();
 //        ItemStack stackToMerge = modularUI.getSlotMap().get(slot).onItemTake(player, stackInSlot.copy(), true);
         ItemStack stackToMerge = stackInSlot.copy();
-        boolean fromContainer = !modularUI.getSlotMap().get(slot).isPlayerContainer;
+        boolean fromContainer = !widget.isPlayerContainer;
         if (!attemptMergeStack(stackToMerge, fromContainer, true)) {
             return ItemStack.EMPTY;
         }
         int itemsMerged;
-        if (stackToMerge.isEmpty() || modularUI.getSlotMap().get(slot).canMergeSlot(stackToMerge)) {
+        if (stackToMerge.isEmpty() || widget.canMergeSlot(stackToMerge)) {
             itemsMerged = stackInSlot.getCount() - stackToMerge.getCount();
         } else {
             //if we can't have partial stack merge, we have to use all the stack
@@ -238,7 +250,8 @@ public class ModularUIContainer extends AbstractContainerMenu implements WidgetU
 
     @Override
     public boolean canTakeItemForPickAll(@Nonnull ItemStack stack, @Nonnull Slot slotIn) {
-        return modularUI.getSlotMap().get(slotIn).canMergeSlot(stack);
+        SlotWidget widget = activeSlotWidget(slotIn, modularUI.getSlotMap());
+        return widget != null && widget.canMergeSlot(stack);
     }
 
     @Override
@@ -274,7 +287,7 @@ public class ModularUIContainer extends AbstractContainerMenu implements WidgetU
         }
     }
 
-    private static class EmptySlotPlaceholder extends Slot {
+    static class EmptySlotPlaceholder extends Slot {
 
         private static final Container EMPTY_INVENTORY = new SimpleContainer(0);
 

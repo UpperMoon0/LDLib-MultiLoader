@@ -16,7 +16,7 @@ import net.minecraft.resources.ResourceLocation;
  */
 public class LDLNetworking {
 
-    public static final INetworking NETWORK = createNetworking(new ResourceLocation(LDLib.MOD_ID, "networking"), "0.0.1");
+    public static final INetworking NETWORK = createNetworking(new ResourceLocation(LDLib.MOD_ID, "networking"), "0.0.2");
 
     @ExpectPlatform
     public static INetworking createNetworking(ResourceLocation networking, String version) {
