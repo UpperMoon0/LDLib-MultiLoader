@@ -40,6 +40,12 @@ tests cover pending-task coalescing, concurrent submissions, task failure,
 executor rejection, chunk unload/reload cancellation, polling cadence,
 nullable collection elements, recovery after concurrent modification and
 isolation of failing async logic.
+The `.github/workflows/forge-gtceu-smoke.yml` workflow creates a disposable
+Forge server on a GitHub-hosted runner, installs the pinned GTCEu and
+Configuration dependencies, and confirms that dozens of registered GTCEu
+machine block entities can be placed, scanned and unloaded without an
+asynchronous-sync error. It uploads the remapped fork jar and test logs.
+
 Before shipping a TFG server update, run an isolated Forge test server with
 GTCEu and a client: verify initial machine state, changing energy/fluids,
 machine and cover updates, chunk unload/reload, disconnect/reconnect, and
