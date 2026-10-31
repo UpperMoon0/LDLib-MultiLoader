@@ -2,6 +2,8 @@ package com.lowdragmc.lowdraglib.syncdata.blockentity;
 
 import com.lowdragmc.lowdraglib.Platform;
 import com.lowdragmc.lowdraglib.async.AsyncThreadData;
+import com.lowdragmc.lowdraglib.async.AsyncPollingSchedule;
+import com.lowdragmc.lowdraglib.async.CoalescedTaskQueue;
 import com.lowdragmc.lowdraglib.async.IAsyncLogic;
 import com.lowdragmc.lowdraglib.networking.LDLNetworking;
 import com.lowdragmc.lowdraglib.networking.s2c.SPacketManagedPayload;
@@ -18,6 +20,14 @@ import java.util.Objects;
  */
 public interface IAsyncAutoSyncBlockEntity extends IAutoSyncBlockEntity, IAsyncLogic {
 
+    // A pending sync is scoped to a tile instance and released in a finally block.
+    // Unlike the legacy no-op setAsyncSyncing method, this actually coalesces work.
+    CoalescedTaskQueue<IAsyncAutoSyncBlockEntity> SYNC_PACKETS = new CoalescedTaskQueue<>();
+    // Only default field change-detection is rate-limited; overridden asyncTick
+    // implementations retain the 50 ms scheduler cadence.
+    int SYNC_POLL_INTERVAL = AsyncPollingSchedule.clampInterval(
+            Integer.getInteger("ldlib.asyncSyncPollInterval", 2));
+
     default boolean useAsyncThread() {
         return true;
     }
@@ -29,6 +39,7 @@ public interface IAsyncAutoSyncBlockEntity extends IAutoSyncBlockEntity, IAsyncL
     }
 
     default void onInValid() {
+        SYNC_PACKETS.cancel(this);
         if (getSelf().getLevel() instanceof ServerLevel serverLevel) {
             AsyncThreadData.getOrCreate(serverLevel).removeAsyncLogic(this);
         }
@@ -39,7 +50,7 @@ public interface IAsyncAutoSyncBlockEntity extends IAutoSyncBlockEntity, IAsyncL
      */
     @ApiStatus.AvailableSince("1.21")
     default boolean isAsyncSyncing() {
-        return false;
+        return SYNC_PACKETS.isPending(this);
     }
 
     /**
@@ -55,16 +66,15 @@ public interface IAsyncAutoSyncBlockEntity extends IAutoSyncBlockEntity, IAsyncL
         if (Platform.isServerNotSafe()) return;
 
         if (useAsyncThread() && !getSelf().isRemoved()) {
+            if (!AsyncPollingSchedule.shouldPoll(periodID, getCurrentPos().asLong(), SYNC_POLL_INTERVAL)) return;
             for (IRef field : getNonLazyFields()) {
                 field.update();
             }
-            if (getRootStorage().hasDirtySyncFields() && !isAsyncSyncing()) {
-                setAsyncSyncing(true);
-                Platform.getMinecraftServer().execute(() -> {
-                    if (Platform.isServerNotSafe()) return;
+            if (getRootStorage().hasDirtySyncFields()) {
+                SYNC_PACKETS.submit(this, Platform.getMinecraftServer(), () -> {
+                    if (Platform.isServerNotSafe() || getSelf().isRemoved()) return;
                     var packet = SPacketManagedPayload.of(this, false);
-                    LDLNetworking.NETWORK.sendToTrackingChunk(packet, Objects.requireNonNull(this.getSelf().getLevel()).getChunkAt(this.getCurrentPos()));
-                    setAsyncSyncing(false);
+                    LDLNetworking.NETWORK.sendToTrackingChunk(packet, Objects.requireNonNull(getSelf().getLevel()).getChunkAt(getCurrentPos()));
                 });
             }
         }

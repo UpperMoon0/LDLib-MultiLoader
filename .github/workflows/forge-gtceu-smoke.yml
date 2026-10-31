@@ -1,0 +1,129 @@
+name: Isolated Forge GTCEu smoke
+
+on:
+  pull_request:
+    branches:
+      - '1.20.1-nstut'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: forge-gtceu-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  forge-gtceu-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build remapped downstream Forge jar
+        run: bash ./gradlew :ldlib-forge:remapJar --no-daemon --stacktrace -Dorg.gradle.jvmargs="-Xmx3G -XX:MaxMetaspaceSize=768m"
+
+      - name: Assemble isolated Forge + GTCEu test pack
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p integration-output/mods
+          jar=$(find forge/build/libs -maxdepth 1 -type f -name '*.jar' ! -name '*-dev*.jar' ! -name '*-sources.jar' ! -name '*javadoc*.jar' | head -n 1)
+          test -n "$jar"
+          cp "$jar" integration-output/mods/
+          echo "Using patched jar: $jar"
+          cd integration-output
+          curl -fsSL --retry 3 -o mods/gtceu-1.20.1-7.5.3.jar             'https://github.com/GregTechCEu/GregTech-Modern/releases/download/v7.5.3-1.20.1/gtceu-1.20.1-7.5.3.jar'
+          echo "d6560d8b695828a763389d3f45e0210ef70c1892c7b1633ac458544905df1a0d  mods/gtceu-1.20.1-7.5.3.jar" | sha256sum -c -
+          curl -fsSL --retry 3 -o mods/configuration-forge-1.20.1-3.1.0.jar             'https://mediafilez.forgecdn.net/files/5840/405/configuration-forge-1.20.1-3.1.0.jar'
+          echo "8757a9f1d47f48463765d1d202cdadc41c84f6b0  mods/configuration-forge-1.20.1-3.1.0.jar" | sha1sum -c -
+          curl -fsSL --retry 3 -o forge-installer.jar             'https://maven.minecraftforge.net/net/minecraftforge/forge/1.20.1-47.4.13/forge-1.20.1-47.4.13-installer.jar'
+          java -jar forge-installer.jar --installServer > installer.log 2>&1 || {
+            tail -n 100 installer.log
+            exit 1
+          }
+          test -f run.sh
+          echo 'eula=true' > eula.txt
+          printf -- '-Xms512M\n-Xmx3G\n' > user_jvm_args.txt
+
+      - name: Start server, exercise GTCEu machine sync and unload
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd integration-output
+          mkfifo server-input
+          exec 3<>server-input
+          bash ./run.sh nogui <server-input > console.log 2>&1 &
+          server_pid=$!
+          cleanup() {
+            printf 'stop\n' >&3 || true
+            sleep 3
+            kill "$server_pid" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+          started=0
+          for i in $(seq 1 100); do
+            if grep -q 'Done (' logs/latest.log 2>/dev/null; then
+              started=1
+              break
+            fi
+            if ! kill -0 "$server_pid" 2>/dev/null; then
+              echo 'Forge server exited before startup finished'
+              tail -n 120 console.log
+              exit 1
+            fi
+            sleep 2
+          done
+          if [ "$started" -ne 1 ]; then
+            echo 'Timed out before a fully initialized Forge server'
+            tail -n 120 console.log
+            exit 1
+          fi
+          echo 'Server startup successful; exercising 64 GTCEu machines'
+          printf 'forceload add -4 -4 3 3\n' >&3
+          sleep 3
+          printf 'fill -4 80 -4 3 80 3 gtceu:lv_macerator\n' >&3
+          sleep 7
+          printf 'execute if block 0 80 0 gtceu:lv_macerator run say LDLib_smoke_machine_present\n' >&3
+          present=0
+          for i in $(seq 1 15); do
+            if grep -q 'LDLib_smoke_machine_present' logs/latest.log; then
+              present=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$present" -ne 1 ]; then
+            echo 'GTCEu macerator was not confirmed in the disposable world'
+            tail -n 140 logs/latest.log
+            exit 1
+          fi
+          sleep 10
+          printf 'fill -4 80 -4 3 80 3 minecraft:air replace gtceu:lv_macerator\n' >&3
+          sleep 3
+          if grep -E 'asyncThreadLogic error|ConcurrentModificationException|NoClassDefFoundError|ExceptionInInitializerError' logs/latest.log; then
+            echo 'Asynchronous synchronization or classloading errors detected'
+            exit 1
+          fi
+          printf 'stop\n' >&3
+          wait "$server_pid"
+          trap - EXIT
+          echo 'Passed: Forge startup, GTCEu machine registration, async processing, unload'
+
+      - name: Preserve Forge jar and isolated test logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ldlib-gtceu-smoke-evidence
+          path: |
+            forge/build/libs/*.jar
+            integration-output/console.log
+            integration-output/installer.log
+            integration-output/logs/latest.log
+            integration-output/crash-reports/
+          retention-days: 7

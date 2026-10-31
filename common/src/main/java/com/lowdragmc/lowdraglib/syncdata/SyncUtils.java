@@ -3,13 +3,15 @@ package com.lowdragmc.lowdraglib.syncdata;
 import com.lowdragmc.lowdraglib.side.fluid.FluidStack;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.item.ItemStack;
-import org.jetbrains.annotations.NotNull;
+import org.jetbrains.annotations.Nullable;
 
 import java.lang.reflect.Array;
 import java.util.Collection;
 
 public class SyncUtils {
-    public static boolean isChanged(@NotNull Object oldValue, @NotNull Object newValue) {
+    public static boolean isChanged(@Nullable Object oldValue, @Nullable Object newValue) {
+        if (oldValue == newValue) return false;
+        if (oldValue == null || newValue == null) return true;
         if (oldValue instanceof ItemStack itemStack) {
             if (!(newValue instanceof ItemStack)) {
                 return true;
@@ -59,12 +61,12 @@ public class SyncUtils {
         }
 
         if (value instanceof Collection<?> collection) {
-            Object[] result = new Object[collection.size()];
-            int i = 0;
-            for (Object o : collection) {
-                result[i++] = copyWhenNecessary(o);
+            // Never iterate a mutable collection concurrently with game logic.
+            Object[] snapshot = collection.toArray();
+            for (int i = 0; i < snapshot.length; i++) {
+                snapshot[i] = copyWhenNecessary(snapshot[i]);
             }
-            return result;
+            return snapshot;
         }
 
         throw new IllegalArgumentException("Value %s is not an array or collection".formatted(value));
