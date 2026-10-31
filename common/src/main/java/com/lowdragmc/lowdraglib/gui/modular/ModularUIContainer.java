@@ -103,7 +103,9 @@ public class ModularUIContainer extends AbstractContainerMenu implements WidgetU
     // A removed slot keeps its numeric index but loses its widget mapping.
     // Never route stale client clicks or pick-all operations to that index.
     static SlotWidget activeSlotWidget(Slot slot, Map<Slot, SlotWidget> slotMap) {
-        return slot instanceof EmptySlotPlaceholder ? null : slotMap.get(slot);
+        SlotWidget widget = slotMap.get(slot);
+        return SlotDispatchPolicy.shouldDispatch(slot instanceof EmptySlotPlaceholder, widget != null)
+                ? widget : null;
     }
 
     @Override

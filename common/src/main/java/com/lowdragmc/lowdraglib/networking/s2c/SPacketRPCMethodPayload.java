@@ -33,7 +33,6 @@ public class SPacketRPCMethodPayload extends PacketIntLocation implements IPacke
     // v2 RPC wire format: mandatory managed-object index.
     @Getter
     private int managedId;
-    private static final int RPC_WIRE_MARKER = -1;
 
     public SPacketRPCMethodPayload(FriendlyByteBuf buffer) {
         decode(buffer);
@@ -69,7 +68,7 @@ public class SPacketRPCMethodPayload extends PacketIntLocation implements IPacke
             LDLib.LOGGER.error("Received managed payload packet for block entity that does not implement IRPCBlockEntity: " + blockEntity);
             return;
         }
-        if (!isValidManagedIndex(managedId, tile.getRootStorage().getManaged().length)) {
+        if (!RpcManagedIndexCodec.isValidIndex(managedId, tile.getRootStorage().getManaged().length)) {
             LDLib.LOGGER.error("Received managed couldn't be found in IRPCBlockEntity: " + blockEntity);
             return;
         }
@@ -83,21 +82,14 @@ public class SPacketRPCMethodPayload extends PacketIntLocation implements IPacke
         rpcMethod.invoke(managed, sender, payloads);
     }
 
-    static boolean isValidManagedIndex(int index, int managedCount) {
-        return index >= 0 && index < managedCount;
-    }
-
     @Override
     public void encode(FriendlyByteBuf buf) {
-        if (managedId < 0) {
-            throw new IllegalArgumentException("Invalid RPC managed-object index: " + managedId);
-        }
         super.encode(buf);
         // A negative sentinel makes old-format packets fail closed on both loaders.
-        buf.writeVarInt(RPC_WIRE_MARKER);
+        RpcManagedIndexCodec.writeHeader(buf);
         buf.writeResourceLocation(Objects.requireNonNull(BuiltInRegistries.BLOCK_ENTITY_TYPE.getKey(blockEntityType)));
         buf.writeUtf(methodName);
-        buf.writeVarInt(managedId);
+        RpcManagedIndexCodec.writeIndex(buf, managedId);
         buf.writeVarInt(payloads.length);
         for (ITypedPayload<?> payload : payloads) {
             buf.writeByte(payload.getType());
@@ -108,15 +100,10 @@ public class SPacketRPCMethodPayload extends PacketIntLocation implements IPacke
     @Override
     public void decode(FriendlyByteBuf buffer) {
         super.decode(buffer);
-        if (buffer.readVarInt() != RPC_WIRE_MARKER) {
-            throw new IllegalArgumentException("Incompatible LDLib RPC packet format (requires v2)");
-        }
+        RpcManagedIndexCodec.readHeader(buffer);
         blockEntityType = BuiltInRegistries.BLOCK_ENTITY_TYPE.get(buffer.readResourceLocation());
         methodName = buffer.readUtf();
-        managedId = buffer.readVarInt();
-        if (managedId < 0) {
-            throw new IllegalArgumentException("Invalid RPC managed-object index: " + managedId);
-        }
+        managedId = RpcManagedIndexCodec.readIndex(buffer);
         payloads = new ITypedPayload<?>[buffer.readVarInt()];
         for (int i = 0; i < payloads.length; i++) {
             byte id = buffer.readByte();
