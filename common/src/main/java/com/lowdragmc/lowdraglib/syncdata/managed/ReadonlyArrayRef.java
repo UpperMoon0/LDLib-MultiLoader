@@ -71,10 +71,16 @@ public class ReadonlyArrayRef extends ReadonlyRef implements IArrayRef {
                 }
             }
         } else if (value instanceof Collection<?> collection) {
+            // Custom collections can still throw while copying; retry next poll
+            // rather than abort the entire world-level async scan.
+            Object[] snapshot;
+            try {
+                snapshot = collection.toArray();
+            } catch (java.util.ConcurrentModificationException ignored) {
+                return;
+            }
             int i = 0;
-            // A non-iterator snapshot avoids ConcurrentModificationException when
-            // an inventory or machine trait changes on the main server thread.
-            for (var item : collection.toArray()) {
+            for (var item : snapshot) {
                 if (item instanceof IManaged managed) {
                     for (IRef field : managed.getSyncStorage().getNonLazyFields()) {
                         field.update();
