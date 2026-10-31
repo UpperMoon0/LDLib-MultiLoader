@@ -29,4 +29,4 @@ jobs:
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
       - name: Common regression tests and Forge compilation
-        run: ./gradlew :common:test :forge:compileJava --no-daemon --stacktrace -Dorg.gradle.jvmargs="-Xmx3G -XX:MaxMetaspaceSize=768m"
+        run: bash ./gradlew :common:test :forge:compileJava --no-daemon --stacktrace -Dorg.gradle.jvmargs="-Xmx3G -XX:MaxMetaspaceSize=768m"
