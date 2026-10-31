@@ -82,9 +82,15 @@ public class AsyncThreadData extends SavedData {
         try {
             if (Platform.isServerNotSafe()) return;
             IN_SERVICE.set(true);
-            for (IAsyncLogic logic : asyncLogics) {
-                logic.asyncTick(periodID);
-            }
+            final int[] failures = {0};
+            AsyncLogicRunner.forEachIsolated(asyncLogics, logic -> logic.asyncTick(periodID),
+                    (logic, failure) -> {
+                        // Log one representative failure every ~6 seconds, not hundreds
+                        // of exception stacks per second from the same broken tile.
+                        if (failures[0]++ == 0 && (periodID & 127) == 0) {
+                            LDLib.LOGGER.error("asyncThreadLogic error in {}", logic.getClass().getName(), failure);
+                        }
+                    });
         } catch (Throwable e) {
             e.printStackTrace();
             LDLib.LOGGER.error("asyncThreadLogic error: {}", e.getMessage());
