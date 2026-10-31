@@ -35,7 +35,7 @@ machine logic still ticks at its normal cadence.
 
 ## Verification
 
-Run `./gradlew :common:test :forge:compileJava` on Java 17. Regression
+Run `./gradlew :ldlib-common:test :ldlib-forge:compileJava :ldlib-fabric:compileJava` on Java 17. Regression
 tests cover pending-task coalescing, concurrent submissions, task failure,
 executor rejection, polling cadence, collection changes and retry-on-mutation.
 Before shipping a TFG server update, run an isolated Forge test server with
