@@ -2,6 +2,7 @@ package com.lowdragmc.lowdraglib.syncdata.blockentity;
 
 import com.lowdragmc.lowdraglib.Platform;
 import com.lowdragmc.lowdraglib.async.AsyncThreadData;
+import com.lowdragmc.lowdraglib.async.AsyncPollingSchedule;
 import com.lowdragmc.lowdraglib.async.CoalescedTaskQueue;
 import com.lowdragmc.lowdraglib.async.IAsyncLogic;
 import com.lowdragmc.lowdraglib.networking.LDLNetworking;
@@ -22,6 +23,10 @@ public interface IAsyncAutoSyncBlockEntity extends IAutoSyncBlockEntity, IAsyncL
     // A pending sync is scoped to a tile instance and released in a finally block.
     // Unlike the legacy no-op setAsyncSyncing method, this actually coalesces work.
     CoalescedTaskQueue<IAsyncAutoSyncBlockEntity> SYNC_PACKETS = new CoalescedTaskQueue<>();
+    // Only default field change-detection is rate-limited; overridden asyncTick
+    // implementations retain the 50 ms scheduler cadence.
+    int SYNC_POLL_INTERVAL = AsyncPollingSchedule.clampInterval(
+            Integer.getInteger("ldlib.asyncSyncPollInterval", 2));
 
     default boolean useAsyncThread() {
         return true;
@@ -60,6 +65,7 @@ public interface IAsyncAutoSyncBlockEntity extends IAutoSyncBlockEntity, IAsyncL
         if (Platform.isServerNotSafe()) return;
 
         if (useAsyncThread() && !getSelf().isRemoved()) {
+            if (!AsyncPollingSchedule.shouldPoll(periodID, getCurrentPos().asLong(), SYNC_POLL_INTERVAL)) return;
             for (IRef field : getNonLazyFields()) {
                 field.update();
             }
