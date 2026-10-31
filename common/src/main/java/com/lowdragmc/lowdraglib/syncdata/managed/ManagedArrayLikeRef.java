@@ -32,9 +32,19 @@ public class ManagedArrayLikeRef extends ManagedRef implements IArrayRef {
     @Override
     public void update() {
         Object newValue = getField().value();
+        // Collections can change on the server thread while we run asynchronously.
+        // Inspect one snapshot rather than iterating the live collection.
+        if (!isArray && newValue instanceof Collection<?> collection) {
+            try {
+                newValue = collection.toArray();
+            } catch (java.util.ConcurrentModificationException ignored) {
+                // A custom collection may reject concurrent snapshots; retry next poll.
+                return;
+            }
+        }
         if ((oldValue == null && newValue != null) || (oldValue != null && newValue == null) || (oldValue != null && checkArrayLikeChanges(oldValue, newValue))) {
             if (newValue != null) {
-                var array = SyncUtils.copyArrayLike(newValue, isArray);
+                var array = SyncUtils.copyArrayLike(newValue, isArray || newValue.getClass().isArray());
                 this.oldValue = array;
                 this.oldLength = Array.getLength(array);
             } else {
@@ -46,7 +56,7 @@ public class ManagedArrayLikeRef extends ManagedRef implements IArrayRef {
     }
 
     protected boolean checkArrayLikeChanges(@NotNull Object oldValue, @NotNull Object newValue) {
-        if (isArray) {
+        if (isArray || newValue.getClass().isArray()) {
             if(Array.getLength(newValue) != oldLength) {
                 this.markAsDirty();
                 dirty.clear();
