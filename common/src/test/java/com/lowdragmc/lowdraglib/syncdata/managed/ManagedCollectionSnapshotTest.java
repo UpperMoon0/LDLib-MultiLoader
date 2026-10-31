@@ -100,5 +100,12 @@ class ManagedCollectionSnapshotTest {
         values.add("one");
         var ref = new ReadonlyArrayRef(true, values);
         assertDoesNotThrow(ref::update);
+
+        var temporarilyMutating = new FlakySnapshotList<String>();
+        temporarilyMutating.add("one");
+        var retryingRef = new ReadonlyArrayRef(true, temporarilyMutating);
+        temporarilyMutating.rejectSnapshot = true;
+        assertDoesNotThrow(retryingRef::update);
+        assertDoesNotThrow(retryingRef::update);
     }
 }
