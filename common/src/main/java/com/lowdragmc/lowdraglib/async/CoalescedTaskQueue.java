@@ -1,7 +1,6 @@
 package com.lowdragmc.lowdraglib.async;
 
 import java.util.Objects;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 
@@ -10,13 +9,22 @@ import java.util.concurrent.Executor;
  * by the supplied executor, never by the caller.
  *
  * <p>Entries are released after execution, including exceptional completion,
- * and after executor rejection. Keys must have stable equality and hash codes.
+ * executor rejection and explicit cancellation. Keys need stable equality
+ * and hash codes.
  */
 public final class CoalescedTaskQueue<K> {
-    private final Set<K> pending = ConcurrentHashMap.newKeySet();
+    private final ConcurrentHashMap<K, Object> pending = new ConcurrentHashMap<>();
 
     public boolean isPending(K key) {
-        return pending.contains(key);
+        return pending.containsKey(key);
+    }
+
+    /**
+     * Discards queued work for an unloaded object. A scheduled but not yet
+     * dispatched runnable is invalidated without touching newer submissions.
+     */
+    public void cancel(K key) {
+        pending.remove(key);
     }
 
     public boolean submit(K key, Executor executor, Runnable task) {
@@ -24,20 +32,24 @@ public final class CoalescedTaskQueue<K> {
         Objects.requireNonNull(executor, "executor");
         Objects.requireNonNull(task, "task");
 
-        if (!pending.add(key)) {
+        Object token = new Object();
+        if (pending.putIfAbsent(key, token) != null) {
             return false;
         }
         try {
             executor.execute(() -> {
                 try {
-                    task.run();
+                    // A chunk may have unloaded and reloaded while this was queued.
+                    if (pending.get(key) == token) {
+                        task.run();
+                    }
                 } finally {
-                    pending.remove(key);
+                    pending.remove(key, token);
                 }
             });
             return true;
         } catch (RuntimeException | Error ex) {
-            pending.remove(key);
+            pending.remove(key, token);
             throw ex;
         }
     }
