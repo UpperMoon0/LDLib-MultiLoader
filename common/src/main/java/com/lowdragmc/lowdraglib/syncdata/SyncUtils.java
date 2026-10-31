@@ -59,12 +59,12 @@ public class SyncUtils {
         }
 
         if (value instanceof Collection<?> collection) {
-            Object[] result = new Object[collection.size()];
-            int i = 0;
-            for (Object o : collection) {
-                result[i++] = copyWhenNecessary(o);
+            // Never iterate a mutable collection concurrently with game logic.
+            Object[] snapshot = collection.toArray();
+            for (int i = 0; i < snapshot.length; i++) {
+                snapshot[i] = copyWhenNecessary(snapshot[i]);
             }
-            return result;
+            return snapshot;
         }
 
         throw new IllegalArgumentException("Value %s is not an array or collection".formatted(value));
