@@ -40,7 +40,7 @@ class AsyncPollingScheduleTest {
             assertEquals(3, count);
         }
         assertNotEquals(
-                AsyncPollingSchedule.shouldPoll(17, 1L << 38, 2),
-                AsyncPollingSchedule.shouldPoll(17, 2L << 38, 2));
+                AsyncPollingSchedule.shouldPoll(17, 1L << 32, 2),
+                AsyncPollingSchedule.shouldPoll(17, 2L << 32, 2));
     }
 }
