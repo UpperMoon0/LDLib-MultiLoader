@@ -53,6 +53,52 @@ class SPacketRPCMethodPayloadTest {
     }
 
     @Test
+    void dispatchesWireIndexToSecondManagedObjectWithExactArguments() {
+        class Target {
+            String method;
+            String sender;
+            int argument;
+            int calls;
+
+            void invoke(String method, String sender, int argument) {
+                this.method = method;
+                this.sender = sender;
+                this.argument = argument;
+                calls++;
+            }
+        }
+        var first = new Target();
+        var second = new Target();
+        var managed = new Target[] {first, second};
+        var wire = Unpooled.buffer();
+        try {
+            RpcManagedIndexCodec.writeHeader(wire);
+            RpcManagedIndexCodec.writeIndex(wire, 1);
+            RpcManagedIndexCodec.readHeader(wire);
+            var decodedIndex = RpcManagedIndexCodec.readIndex(wire);
+            assertTrue(RpcManagedIndexCodec.dispatchManaged(decodedIndex, managed,
+                    target -> target.invoke("changeMode", "server", 37)));
+            assertEquals(0, first.calls, "managed object #0 must never receive target #1 RPC");
+            assertEquals(1, second.calls);
+            assertEquals("changeMode", second.method);
+            assertEquals("server", second.sender);
+            assertEquals(37, second.argument);
+            assertFalse(wire.isReadable());
+        } finally {
+            wire.release();
+        }
+    }
+
+    @Test
+    void invalidWireIndexNeverInvokesAnyManagedObject() {
+        var targets = new String[] {"first", "second"};
+        var called = new int[] {0};
+        assertFalse(RpcManagedIndexCodec.dispatchManaged(-1, targets, ignored -> called[0]++));
+        assertFalse(RpcManagedIndexCodec.dispatchManaged(2, targets, ignored -> called[0]++));
+        assertEquals(0, called[0]);
+    }
+
+    @Test
     void rejectsTruncatedHeader() {
         var buf = Unpooled.buffer();
         try {
