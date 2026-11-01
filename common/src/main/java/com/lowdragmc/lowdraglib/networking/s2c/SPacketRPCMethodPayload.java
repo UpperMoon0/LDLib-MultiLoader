@@ -68,18 +68,19 @@ public class SPacketRPCMethodPayload extends PacketIntLocation implements IPacke
             LDLib.LOGGER.error("Received managed payload packet for block entity that does not implement IRPCBlockEntity: " + blockEntity);
             return;
         }
-        if (!RpcManagedIndexCodec.isValidIndex(managedId, tile.getRootStorage().getManaged().length)) {
+        // Capture one storage snapshot, then dispatch on the validated index; do not
+        // mix a length check and a second getManaged() lookup from different snapshots.
+        var managedObjects = tile.getRootStorage().getManaged();
+        if (!RpcManagedIndexCodec.dispatchManaged(managedId, managedObjects, managed -> {
+            var rpcMethod = tile.getRPCMethod(managed, methodName);
+            if (rpcMethod == null) {
+                LDLib.LOGGER.error("Cannot find RPC method: " + methodName);
+                return;
+            }
+            rpcMethod.invoke(managed, sender, payloads);
+        })) {
             LDLib.LOGGER.error("Received managed couldn't be found in IRPCBlockEntity: " + blockEntity);
-            return;
         }
-        var managed = tile.getRootStorage().getManaged()[managedId];
-        var rpcMethod = tile.getRPCMethod(managed, methodName);
-        if (rpcMethod == null) {
-            LDLib.LOGGER.error("Cannot find RPC method: " + methodName);
-            return;
-        }
-
-        rpcMethod.invoke(managed, sender, payloads);
     }
 
     @Override
