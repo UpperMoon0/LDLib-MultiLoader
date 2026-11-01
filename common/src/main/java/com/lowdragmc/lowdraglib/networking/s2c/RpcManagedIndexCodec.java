@@ -2,6 +2,8 @@ package com.lowdragmc.lowdraglib.networking.s2c;
 
 import io.netty.buffer.ByteBuf;
 
+import java.util.function.Consumer;
+
 /** Shared RPC wire preamble and managed index, testable without Minecraft bootstrap. */
 final class RpcManagedIndexCodec {
     private static final int RPC_V2_MARKER = -1;
@@ -35,6 +37,13 @@ final class RpcManagedIndexCodec {
 
     static boolean isValidIndex(int index, int managedCount) {
         return index >= 0 && index < managedCount;
+    }
+
+    /** Select the verified wire target and invoke only that managed object. */
+    static <T> boolean dispatchManaged(int index, T[] managedObjects, Consumer<? super T> invocation) {
+        if (!isValidIndex(index, managedObjects.length)) return false;
+        invocation.accept(managedObjects[index]);
+        return true;
     }
 
     // Match FriendlyByteBuf's VarInt wire format for both supported loaders.
