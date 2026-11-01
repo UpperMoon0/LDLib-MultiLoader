@@ -66,6 +66,8 @@ public class ModularUIContainer extends AbstractContainerMenu implements WidgetU
     //WARNING! WIDGET CHANGES SHOULD BE *STRICTLY* SYNCHRONIZED BETWEEN SERVER AND CLIENT,
     //OTHERWISE ID MISMATCH CAN HAPPEN BETWEEN ASSIGNED SLOTS!
     public void removeSlot(Slot slotHandle) {
+        // A delayed removal must not erase another slot that reused this numeric index.
+        if (!SlotDispatchPolicy.isCurrentSlot(slotHandle, slotHandle.index, slots)) return;
         //replace removed slot with empty placeholder to avoid list index shift
         EmptySlotPlaceholder emptySlotPlaceholder = new EmptySlotPlaceholder();
         emptySlotPlaceholder.index = slotHandle.index;
@@ -102,10 +104,10 @@ public class ModularUIContainer extends AbstractContainerMenu implements WidgetU
 
     // A removed slot keeps its numeric index but loses its widget mapping.
     // Never route stale client clicks or pick-all operations to that index.
-    static SlotWidget activeSlotWidget(Slot slot, Map<Slot, SlotWidget> slotMap) {
-        SlotWidget widget = slotMap.get(slot);
-        return SlotDispatchPolicy.shouldDispatch(slot instanceof EmptySlotPlaceholder, widget != null)
-                ? widget : null;
+    private SlotWidget activeSlotWidget(Slot slot, Map<Slot, SlotWidget> slotMap) {
+        if (slot == null) return null;
+        return SlotDispatchPolicy.activeWidget(slot, slot.index, slots, slotMap,
+                slot instanceof EmptySlotPlaceholder);
     }
 
     @Override
@@ -131,6 +133,9 @@ public class ModularUIContainer extends AbstractContainerMenu implements WidgetU
 
     private List<SlotWidget> getShiftClickSlots(ItemStack itemStack, boolean fromContainer) {
         return modularUI.getSlotMap().values().stream()
+                // Reject stale entries when removed slots or their indices are reused.
+                .filter(it -> it.getHandler() != null &&
+                        activeSlotWidget(it.getHandler(), modularUI.getSlotMap()) == it)
                 .filter(it -> it.canMergeSlot(itemStack))
                 .filter(it -> it.isPlayerContainer == fromContainer)
                 .sorted(Comparator.comparing(s -> (fromContainer ? -1 : 1) * s.getHandler().index))
