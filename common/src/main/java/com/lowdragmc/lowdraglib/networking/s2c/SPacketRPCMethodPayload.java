@@ -9,6 +9,7 @@ import com.lowdragmc.lowdraglib.syncdata.TypedPayloadRegistries;
 import com.lowdragmc.lowdraglib.syncdata.blockentity.IRPCBlockEntity;
 import com.lowdragmc.lowdraglib.syncdata.payload.ITypedPayload;
 import com.lowdragmc.lowdraglib.syncdata.rpc.RPCSender;
+import lombok.Getter;
 import lombok.NoArgsConstructor;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -29,6 +30,8 @@ public class SPacketRPCMethodPayload extends PacketIntLocation implements IPacke
     private ITypedPayload<?>[] payloads;
 
     private String methodName;
+    // v2 RPC wire format: mandatory managed-object index.
+    @Getter
     private int managedId;
 
     public SPacketRPCMethodPayload(FriendlyByteBuf buffer) {
@@ -65,25 +68,29 @@ public class SPacketRPCMethodPayload extends PacketIntLocation implements IPacke
             LDLib.LOGGER.error("Received managed payload packet for block entity that does not implement IRPCBlockEntity: " + blockEntity);
             return;
         }
-        if (tile.getRootStorage().getManaged().length <= managedId) {
+        // Capture one storage snapshot, then dispatch on the validated index; do not
+        // mix a length check and a second getManaged() lookup from different snapshots.
+        var managedObjects = tile.getRootStorage().getManaged();
+        if (!RpcManagedIndexCodec.dispatchManaged(managedId, managedObjects, managed -> {
+            var rpcMethod = tile.getRPCMethod(managed, methodName);
+            if (rpcMethod == null) {
+                LDLib.LOGGER.error("Cannot find RPC method: " + methodName);
+                return;
+            }
+            rpcMethod.invoke(managed, sender, payloads);
+        })) {
             LDLib.LOGGER.error("Received managed couldn't be found in IRPCBlockEntity: " + blockEntity);
-            return;
         }
-        var managed = tile.getRootStorage().getManaged()[managedId];
-        var rpcMethod = tile.getRPCMethod(managed, methodName);
-        if (rpcMethod == null) {
-            LDLib.LOGGER.error("Cannot find RPC method: " + methodName);
-            return;
-        }
-
-        rpcMethod.invoke(managed, sender, payloads);
     }
 
     @Override
     public void encode(FriendlyByteBuf buf) {
         super.encode(buf);
+        // A negative sentinel makes old-format packets fail closed on both loaders.
+        RpcManagedIndexCodec.writeHeader(buf);
         buf.writeResourceLocation(Objects.requireNonNull(BuiltInRegistries.BLOCK_ENTITY_TYPE.getKey(blockEntityType)));
         buf.writeUtf(methodName);
+        RpcManagedIndexCodec.writeIndex(buf, managedId);
         buf.writeVarInt(payloads.length);
         for (ITypedPayload<?> payload : payloads) {
             buf.writeByte(payload.getType());
@@ -94,8 +101,10 @@ public class SPacketRPCMethodPayload extends PacketIntLocation implements IPacke
     @Override
     public void decode(FriendlyByteBuf buffer) {
         super.decode(buffer);
+        RpcManagedIndexCodec.readHeader(buffer);
         blockEntityType = BuiltInRegistries.BLOCK_ENTITY_TYPE.get(buffer.readResourceLocation());
         methodName = buffer.readUtf();
+        managedId = RpcManagedIndexCodec.readIndex(buffer);
         payloads = new ITypedPayload<?>[buffer.readVarInt()];
         for (int i = 0; i < payloads.length; i++) {
             byte id = buffer.readByte();

@@ -76,7 +76,11 @@ public class Networking implements INetworking {
                         }
                     }));
                 } catch (InstantiationException | IllegalAccessException e) {
-                    e.printStackTrace();
+                    LDLib.LOGGER.error("Cannot construct LDLib packet {}", clazz.getName(), e);
+                } catch (IllegalArgumentException e) {
+                    // An old RPC frame or malformed managed index must be dropped,
+                    // not allowed to abort Fabric's network receive callback.
+                    LDLib.LOGGER.warn("Rejected incompatible LDLib packet {}: {}", clazz.getName(), e.toString());
                 }
             });
         } else if (LDLib.isClient()){
@@ -111,7 +115,11 @@ public class Networking implements INetworking {
                         }
                     }));
                 } catch (InstantiationException | IllegalAccessException e) {
-                    e.printStackTrace();
+                    LDLib.LOGGER.error("Cannot construct LDLib packet {}", clazz.getName(), e);
+                } catch (IllegalArgumentException e) {
+                    // An old RPC frame or malformed managed index must be dropped,
+                    // not allowed to abort Fabric's network receive callback.
+                    LDLib.LOGGER.warn("Rejected incompatible LDLib packet {}: {}", clazz.getName(), e.toString());
                 }
             });
         }
