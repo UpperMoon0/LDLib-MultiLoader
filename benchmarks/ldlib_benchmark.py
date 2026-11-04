@@ -204,6 +204,9 @@ def run_variant(
             wait_log(server_log, "Done (", launcher, STARTUP_TIMEOUT_SECONDS)
             pid = java_pid(launcher)
             send_command(launcher, "forceload add -16 -16 15 15")
+            # Forge schedules chunk loading asynchronously: give the fixed
+            # benchmark region time to finish loading before the first fill.
+            time.sleep(5)
             for count, half_width in PROFILES:
                 coord_min, coord_max = -half_width, half_width - 1
                 send_command(
