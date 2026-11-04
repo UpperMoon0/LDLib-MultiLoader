@@ -11,6 +11,8 @@ on:
       - 'benchmarks/ldlib_active_benchmark.py'
       - 'benchmarks/injected-src/**'
       - 'benchmarks/test_active_benchmark.py'
+      - 'common/src/main/java/com/lowdragmc/lowdraglib/async/**'
+      - 'common/src/main/java/com/lowdragmc/lowdraglib/syncdata/**'
   pull_request:
     branches:
       - '1.20.1-nstut'
@@ -19,6 +21,8 @@ on:
       - 'benchmarks/ldlib_active_benchmark.py'
       - 'benchmarks/injected-src/**'
       - 'benchmarks/test_active_benchmark.py'
+      - 'common/src/main/java/com/lowdragmc/lowdraglib/async/**'
+      - 'common/src/main/java/com/lowdragmc/lowdraglib/syncdata/**'
 
 permissions:
   contents: read
