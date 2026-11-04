@@ -55,6 +55,18 @@ class ActiveBenchTests(unittest.TestCase):
                 writer.writerows(self.rows()[:3])
             self.assertEqual(len(telemetry(file)), 3)
 
+    def test_reflection_targets_pinned_gtceu_trait_package(self):
+        """GTCEu 7.5.3 places these public traits directly under machine.trait."""
+        source = (Path(__file__).parent / "injected-src" / "ActiveGtceuProfiler.java").read_text()
+        for class_name in (
+            "NotifiableItemStackHandler", "NotifiableEnergyContainer", "RecipeLogic"
+        ):
+            self.assertIn(
+                f"com.gregtechceu.gtceu.api.machine.trait.{class_name}", source
+            )
+        self.assertNotIn("trait.notifiable.", source)
+        self.assertNotIn("trait.recipe.", source)
+
     def test_summary_labels_are_honest(self):
         def profile(count, cpu, p95):
             return {
