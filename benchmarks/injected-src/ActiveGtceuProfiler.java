@@ -59,11 +59,11 @@ public final class ActiveGtceuProfiler {
         workableType = Class.forName("com.gregtechceu.gtceu.api.machine.WorkableTieredMachine");
         Class<?> energyType = Class.forName("com.gregtechceu.gtceu.api.machine.TieredEnergyMachine");
         Class<?> handlerType =
-                Class.forName("com.gregtechceu.gtceu.api.machine.trait.notifiable.NotifiableItemStackHandler");
+                Class.forName("com.gregtechceu.gtceu.api.machine.trait.NotifiableItemStackHandler");
         Class<?> containerType =
-                Class.forName("com.gregtechceu.gtceu.api.machine.trait.notifiable.NotifiableEnergyContainer");
+                Class.forName("com.gregtechceu.gtceu.api.machine.trait.NotifiableEnergyContainer");
         Class<?> logicType =
-                Class.forName("com.gregtechceu.gtceu.api.machine.trait.recipe.RecipeLogic");
+                Class.forName("com.gregtechceu.gtceu.api.machine.trait.RecipeLogic");
 
         findMachine = metaType.getMethod("getMachine", BlockGetter.class, BlockPos.class);
         importItems = workableType.getField("importItems");
